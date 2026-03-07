@@ -122,9 +122,9 @@ const publicApp = new Hono<{ Variables: { db: typeof db } }>()
     return c.json({ id: existing.id, exp: existing.exp });
   });
 
-const app = new Hono<{ Variables: { db: typeof db } }>().basePath("/api");
-
+const app = new Hono<{ Variables: { db: typeof db } }>();
 const routes = app
+  .basePath("/api")
   .use(async (c, next) => {
     c.set("db", db);
     await next();
