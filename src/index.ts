@@ -40,11 +40,16 @@ async function getPayload(token: string) {
   }
 }
 
-const adminApp = new Hono<{ Variables: { db: typeof db } }>()
+type Variables = {
+  db: typeof db;
+};
+
+const adminApp = new Hono<{ Variables: Variables }>()
   .use(basicAuth({ username: env.USERNAME, password: env.PASSWORD }))
   .post("/issue", async (c) => {
-    const surveyExp = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), 7)));
-    const couponExp = getUnixTime(endOfMonth(addMonths(TZDate.tz(TIMEZONE), 1)));
+    const now = TZDate.tz(TIMEZONE);
+    const surveyExp = getUnixTime(endOfDay(addDays(now, 7)));
+    const couponExp = getUnixTime(endOfMonth(addMonths(now, 1)));
     return c.json({
       token: await sign({ sub: nanoid(), exp: couponExp, surveyExp } satisfies Payload, env.SECRET),
       surveyExp,
@@ -71,7 +76,7 @@ const adminApp = new Hono<{ Variables: { db: typeof db } }>()
     return c.body(null, 204);
   });
 
-const publicApp = new Hono<{ Variables: { db: typeof db } }>()
+const publicApp = new Hono<{ Variables: Variables }>()
   .get("/status", vValidator("query", v.object({ token: v.string() })), async (c) => {
     const { token } = c.req.valid("query");
     const { payload, message } = await getPayload(token);
@@ -122,7 +127,8 @@ const publicApp = new Hono<{ Variables: { db: typeof db } }>()
     return c.json({ id: existing.id, exp: existing.exp });
   });
 
-const app = new Hono<{ Variables: { db: typeof db } }>();
+const app = new Hono<{ Variables: Variables }>();
+
 const routes = app
   .basePath("/api")
   .use(async (c, next) => {
