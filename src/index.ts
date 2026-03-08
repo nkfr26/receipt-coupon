@@ -16,11 +16,13 @@ import { sign, verify } from "hono/jwt";
 import { JwtTokenExpired } from "hono/utils/jwt/types";
 import { nanoid } from "nanoid";
 import * as v from "valibot";
-import { db } from "./db";
 import { coupons } from "./db/schema";
 import { env } from "../env";
+import { drizzle } from "drizzle-orm/libsql";
 
 const TIMEZONE = "Asia/Tokyo";
+
+const tokenQueryValidator = vValidator("query", v.object({ token: v.string() }));
 
 const PayloadSchema = v.object({
   sub: v.pipe(v.string(), v.nanoid()),
@@ -40,6 +42,8 @@ async function getPayload(token: string) {
   }
 }
 
+const db = drizzle(env.DB_FILE_NAME);
+
 type Variables = {
   db: typeof db;
 };
@@ -55,7 +59,7 @@ const adminApp = new Hono<{ Variables: Variables }>()
       surveyExp,
     });
   })
-  .put("/use", vValidator("query", v.object({ token: v.string() })), async (c) => {
+  .put("/use", tokenQueryValidator, async (c) => {
     const { token } = c.req.valid("query");
     const { payload, message } = await getPayload(token);
     if (!payload) {
@@ -73,11 +77,11 @@ const adminApp = new Hono<{ Variables: Variables }>()
     if (!coupon) {
       return c.json({ message: "このクーポンは無効、または使用済みです" }, 400);
     }
-    return c.body(null, 204);
+    return c.json(coupon);
   });
 
 const publicApp = new Hono<{ Variables: Variables }>()
-  .get("/status", vValidator("query", v.object({ token: v.string() })), async (c) => {
+  .get("/status", tokenQueryValidator, async (c) => {
     const { token } = c.req.valid("query");
     const { payload, message } = await getPayload(token);
     if (!payload) {
@@ -97,7 +101,7 @@ const publicApp = new Hono<{ Variables: Variables }>()
     }
     return c.json({ status: "active" as const, id: coupon.id, exp: coupon.exp });
   })
-  .post("/answer", vValidator("query", v.object({ token: v.string() })), async (c) => {
+  .post("/answer", tokenQueryValidator, async (c) => {
     const { token } = c.req.valid("query");
     const { payload, message } = await getPayload(token);
     if (!payload) {
@@ -116,7 +120,7 @@ const publicApp = new Hono<{ Variables: Variables }>()
       .returning();
 
     if (inserted) {
-      return c.json({ id: inserted.id, exp: inserted.exp }, 201);
+      return c.json(inserted, 201);
     }
 
     const [existing] = await c.get("db").select().from(coupons).where(eq(coupons.id, payload.sub));
@@ -124,7 +128,7 @@ const publicApp = new Hono<{ Variables: Variables }>()
     if (!existing) {
       return c.json({ message: "予期せぬエラーが発生しました" }, 500);
     }
-    return c.json({ id: existing.id, exp: existing.exp });
+    return c.json(existing);
   });
 
 const app = new Hono<{ Variables: Variables }>();
