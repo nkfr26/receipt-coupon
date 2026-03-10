@@ -10,17 +10,20 @@ import {
   isPast,
 } from "date-fns";
 import { and, eq, gte, isNull } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/libsql";
 import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
 import { sign, verify } from "hono/jwt";
 import { JwtTokenExpired } from "hono/utils/jwt/types";
 import { nanoid } from "nanoid";
+import { match } from "ts-pattern";
 import * as v from "valibot";
 import { coupons } from "./db/schema";
 import { env } from "../env";
-import { drizzle } from "drizzle-orm/libsql";
 
 const TIMEZONE = "Asia/Tokyo";
+const SURVEY_EXPIRE_DAYS = 7;
+const COUPON_EXPIRE_MONTHS = 1;
 
 const tokenQueryValidator = vValidator("query", v.object({ token: v.string() }));
 
@@ -42,6 +45,18 @@ async function getPayload(token: string) {
   }
 }
 
+function getSurveyStatus(surveyExp: number) {
+  if (isPast(fromUnixTime(surveyExp))) {
+    return { status: "survey expired" } as const;
+  }
+  return { status: "unanswered", surveyExp } as const;
+}
+
+function getCouponStatus(coupon: typeof coupons.$inferSelect) {
+  if (coupon.usedAt) return { status: "used" } as const;
+  return { status: "active", ...coupon } as const;
+}
+
 const db = drizzle(env.DB_FILE_NAME);
 
 type Variables = {
@@ -52,8 +67,8 @@ const adminApp = new Hono<{ Variables: Variables }>()
   .use(basicAuth({ username: env.USERNAME, password: env.PASSWORD }))
   .post("/issue", async (c) => {
     const now = TZDate.tz(TIMEZONE);
-    const surveyExp = getUnixTime(endOfDay(addDays(now, 7)));
-    const couponExp = getUnixTime(endOfMonth(addMonths(now, 1)));
+    const surveyExp = getUnixTime(endOfDay(addDays(now, SURVEY_EXPIRE_DAYS)));
+    const couponExp = getUnixTime(endOfMonth(addMonths(now, COUPON_EXPIRE_MONTHS)));
     return c.json({
       token: await sign({ sub: nanoid(), exp: couponExp, surveyExp } satisfies Payload, env.SECRET),
       surveyExp,
@@ -67,17 +82,28 @@ const adminApp = new Hono<{ Variables: Variables }>()
     }
 
     const now = new Date();
-    const [coupon] = await c
+    const [updated] = await c
       .get("db")
       .update(coupons)
       .set({ usedAt: now })
       .where(and(eq(coupons.id, payload.sub), isNull(coupons.usedAt), gte(coupons.exp, now)))
       .returning();
 
-    if (!coupon) {
-      return c.json({ message: "このクーポンは無効、または使用済みです" }, 400);
+    if (updated) {
+      return c.json(updated);
     }
-    return c.json(coupon);
+
+    const [existing] = await c.get("db").select().from(coupons).where(eq(coupons.id, payload.sub));
+
+    if (!existing) {
+      return c.json({ message: "このクーポンは無効です" }, 404);
+    }
+    return match(getCouponStatus(existing))
+      .with({ status: "used" }, () =>
+        c.json({ message: "このクーポンは既に使用されています" }, 400),
+      )
+      .with({ status: "active" }, () => c.json({ message: "予期せぬエラーが発生しました" }, 500))
+      .exhaustive();
   });
 
 const publicApp = new Hono<{ Variables: Variables }>()
@@ -91,15 +117,9 @@ const publicApp = new Hono<{ Variables: Variables }>()
     const [coupon] = await c.get("db").select().from(coupons).where(eq(coupons.id, payload.sub));
 
     if (!coupon) {
-      if (isPast(fromUnixTime(payload.surveyExp))) {
-        return c.json({ status: "survey expired" as const });
-      }
-      return c.json({ status: "unanswered" as const, surveyExp: payload.surveyExp });
+      return c.json(getSurveyStatus(payload.surveyExp));
     }
-    if (coupon.usedAt) {
-      return c.json({ status: "used" as const });
-    }
-    return c.json({ status: "active" as const, id: coupon.id, exp: coupon.exp });
+    return c.json(getCouponStatus(coupon));
   })
   .post("/answer", tokenQueryValidator, async (c) => {
     const { token } = c.req.valid("query");
@@ -128,7 +148,12 @@ const publicApp = new Hono<{ Variables: Variables }>()
     if (!existing) {
       return c.json({ message: "予期せぬエラーが発生しました" }, 500);
     }
-    return c.json(existing);
+    return match(getCouponStatus(existing))
+      .with({ status: "used" }, () =>
+        c.json({ message: "このクーポンは既に使用されています" }, 400),
+      )
+      .with({ status: "active" }, () => c.json(existing))
+      .exhaustive();
   });
 
 const app = new Hono<{ Variables: Variables }>();
