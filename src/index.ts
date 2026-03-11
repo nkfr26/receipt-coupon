@@ -57,10 +57,8 @@ function getCouponStatus(coupon: typeof coupons.$inferSelect) {
   return { status: "active", ...coupon } as const;
 }
 
-const db = drizzle(env.DB_FILE_NAME);
-
 type Variables = {
-  db: typeof db;
+  db: ReturnType<typeof drizzle>;
 };
 
 const adminApp = new Hono<{ Variables: Variables }>()
@@ -102,6 +100,7 @@ const adminApp = new Hono<{ Variables: Variables }>()
       .with({ status: "used" }, () =>
         c.json({ message: "このクーポンは既に使用されています" }, 400),
       )
+      // レースコンディション？
       .with({ status: "active" }, () => c.json({ message: "予期せぬエラーが発生しました" }, 500))
       .exhaustive();
   });
@@ -161,7 +160,7 @@ const app = new Hono<{ Variables: Variables }>();
 const routes = app
   .basePath("/api")
   .use(async (c, next) => {
-    c.set("db", db);
+    c.set("db", drizzle(env.DB_FILE_NAME));
     await next();
   })
   .route("/admin", adminApp)
