@@ -20,9 +20,9 @@ import * as v from "valibot";
 import { coupons } from "./db/schema";
 import { env } from "../env";
 
-const TIMEZONE = "Asia/Tokyo";
-const SURVEY_EXPIRE_DAYS = 7;
-const COUPON_EXPIRE_MONTHS = 1;
+export const TIMEZONE = "Asia/Tokyo";
+export const SURVEY_EXPIRE_DAYS = 7;
+export const COUPON_EXPIRE_MONTHS = 1;
 const MESSAGES = {
   TOKEN_INVALID: "このURLは無効です",
   SURVEY_EXPIRED: "アンケートの回答期限が過ぎています",
@@ -98,7 +98,7 @@ const adminApp = new Hono<{ Variables: Variables }>()
       .returning();
 
     if (updated) {
-      return c.json(updated);
+      return c.json(updated, 200);
     }
 
     // 使用処理に失敗した場合
@@ -161,7 +161,7 @@ const publicApp = new Hono<{ Variables: Variables }>()
     return match(getCouponStatus(existing))
       .with({ status: "coupon expired" }, () => c.json({ message: MESSAGES.COUPON_EXPIRED }, 400))
       .with({ status: "used" }, () => c.json({ message: MESSAGES.COUPON_USED }, 400))
-      .with({ status: "active" }, () => c.json(existing))
+      .with({ status: "active" }, () => c.json(existing, 200))
       .exhaustive();
   });
 
