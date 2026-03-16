@@ -74,7 +74,7 @@ type Variables = {
 };
 
 const adminApp = new Hono<{ Variables: Variables }>()
-  .use(basicAuth({ username: env.USERNAME, password: env.PASSWORD }))
+  .use(basicAuth({ username: env.BA_USERNAME, password: env.BA_PASSWORD }))
   .post("/issue", async (c) => {
     const surveyExp = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
     return c.json({
@@ -165,16 +165,18 @@ const publicApp = new Hono<{ Variables: Variables }>()
       .exhaustive();
   });
 
-const app = new Hono<{ Variables: Variables }>();
-
-const routes = app
+export function createApp(db: ReturnType<typeof drizzle>) {
+  return new Hono<{ Variables: Variables }>()
   .basePath("/api")
   .use(async (c, next) => {
-    c.set("db", drizzle(env.DB_FILE_NAME));
+    c.set("db", db);
     await next();
   })
   .route("/admin", adminApp)
   .route("/", publicApp);
+}
+
+const app = createApp(drizzle(env.DB_FILE_NAME));
 
 export default app;
-export type AppType = typeof routes;
+export type AppType = typeof app;

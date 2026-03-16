@@ -1,30 +1,26 @@
-import { afterEach, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { TZDate } from "@date-fns/tz";
-import { createClient } from "@libsql/client";
 import { addDays, addMonths, endOfDay, endOfMonth, getUnixTime } from "date-fns";
 import { drizzle } from "drizzle-orm/libsql";
 import { testClient } from "hono/testing";
-import app, { COUPON_EXPIRE_MONTHS, SURVEY_EXPIRE_DAYS, TIMEZONE, type AppType } from "./index";
+import { COUPON_EXPIRE_MONTHS, createApp, SURVEY_EXPIRE_DAYS, TIMEZONE, type AppType } from "./index";
 import { env } from "../env";
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { coupons } from "./db/schema";
 
-// bun run test で実行
-// file::memory:?cache=shared により、アプリ側の新規接続と同一DBを共有
-const sharedDb = drizzle(createClient({ url: env.DB_FILE_NAME }));
+let client: ReturnType<typeof testClient<AppType>>;
 
-beforeAll(async () => {
-  await migrate(sharedDb, { migrationsFolder: "./drizzle" });
+beforeEach(async () => {
+  const db = drizzle(env.DB_FILE_NAME);
+  await migrate(db, { migrationsFolder: "./drizzle" });
+  client = testClient(createApp(db));
 });
 
 afterEach(async () => {
   setSystemTime();
-  await sharedDb.delete(coupons);
 });
 
-const client = testClient<AppType>(app);
 const adminHeaders = {
-  Authorization: `Basic ${btoa(`${env.USERNAME}:${env.PASSWORD}`)}`,
+  Authorization: `Basic ${btoa(`${env.BA_USERNAME}:${env.BA_PASSWORD}`)}`,
 };
 
 // /api/admin/issue 経由でトークンを発行する
@@ -34,51 +30,51 @@ async function issueToken() {
 }
 
 describe("POST /api/admin/issue", () => {
-  test("Basic認証なしは 401", async () => {
+  test("Basic認証なしは401", async () => {
     const response = await client.api.admin.issue.$post({});
     expect(response.status).toBe(401);
   });
 
-  test("surveyExp は東京時間で SURVEY_EXPIRE_DAYS 日後の終わり", async () => {
-    setSystemTime(new Date("2025-06-01T00:00:00Z"));
+  test("アンケート回答期限はTIMEZONEでSURVEY_EXPIRE_DAYS日後の終わり", async () => {
+    setSystemTime(new Date("2026-01-01T00:00:00+09:00"));
 
-    const result = await issueToken();
+    const actual = await issueToken();
 
     const expected = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
-    expect(result.surveyExp).toBe(expected);
+    expect(actual.surveyExp).toBe(expected);
   });
 });
 
 describe("GET /api/status", () => {
-  test("不正な token は 401", async () => {
+  test("不正なトークンは401", async () => {
     const response = await client.api.status.$get({ query: { token: "invalid.token.here" } });
     expect(response.status).toBe(401);
   });
 
-  test("アンケート未回答 → unanswered", async () => {
+  test("アンケート未回答→unanswered", async () => {
     const { token } = await issueToken();
     const response = await client.api.status.$get({ query: { token } });
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.status).toBe("unanswered");
+    const actual = await response.json();
+    expect(actual.status).toBe("unanswered");
   });
 
-  test("アンケート回答期限切れ → survey expired", async () => {
+  test("アンケート回答期限切れ→survey expired", async () => {
     const { token } = await issueToken();
 
-    setSystemTime(addDays(new Date(), SURVEY_EXPIRE_DAYS + 1));
+    setSystemTime(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS + 1));
 
     const response = await client.api.status.$get({ query: { token } });
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.status).toBe("survey expired");
+    const actual = await response.json();
+    expect(actual.status).toBe("survey expired");
   });
 
-  test("クーポン発行済み → active", async () => {
+  test("クーポン発行済み→active", async () => {
     const { token } = await issueToken();
     await client.api.answer.$post({ query: { token } });
 
@@ -86,11 +82,11 @@ describe("GET /api/status", () => {
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.status).toBe("active");
+    const actual = await response.json();
+    expect(actual.status).toBe("active");
   });
 
-  test("クーポン使用済み → used", async () => {
+  test("クーポン使用済み→used", async () => {
     const { token } = await issueToken();
     await client.api.answer.$post({ query: { token } });
     await client.api.admin.use.$put({ query: { token } }, { headers: adminHeaders });
@@ -99,11 +95,11 @@ describe("GET /api/status", () => {
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.status).toBe("used");
+    const actual = await response.json();
+    expect(actual.status).toBe("used");
   });
 
-  test("クーポン有効期限切れ → coupon expired", async () => {
+  test("クーポン有効期限切れ→coupon expired", async () => {
     const { token } = await issueToken();
     await client.api.answer.$post({ query: { token } });
 
@@ -113,13 +109,13 @@ describe("GET /api/status", () => {
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.status).toBe("coupon expired");
+    const actual = await response.json();
+    expect(actual.status).toBe("coupon expired");
   });
 });
 
 describe("POST /api/answer", () => {
-  test("回答するとクーポンが発行される (201)", async () => {
+  test("回答するとクーポンが発行される(201)", async () => {
     const { token } = await issueToken();
     const response = await client.api.answer.$post({ query: { token } });
     if (!response.ok) {
@@ -128,50 +124,50 @@ describe("POST /api/answer", () => {
     expect(response.status).toBe(201);
   });
 
-  test("クーポン有効期限は東京時間で翌月末", async () => {
-    setSystemTime(new Date("2025-06-15T10:00:00Z"));
+  test("クーポン有効期限はTIMEZONEで翌月末", async () => {
+    setSystemTime(new Date("2026-01-01T00:00:00+09:00"));
 
     const { token } = await issueToken();
     const response = await client.api.answer.$post({ query: { token } });
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
+    const actual = await response.json();
 
     const expectedExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
-    expect(getUnixTime(new Date(result.exp))).toBe(getUnixTime(expectedExp));
+    expect(getUnixTime(new Date(actual.exp))).toBe(getUnixTime(expectedExp));
   });
 
-  test("二重回答は既存クーポンを返す (200)", async () => {
+  test("二重回答は既存クーポンを返す(200)", async () => {
     const { token } = await issueToken();
     const response1 = await client.api.answer.$post({ query: { token } });
     if (response1.status !== 201) {
       throw new Error(`レスポンスステータス: ${response1.status}`);
     }
-    const result1 = await response1.json();
+    const actual1 = await response1.json();
 
     const response2 = await client.api.answer.$post({ query: { token } });
     if (response2.status !== 200) {
       throw new Error(`レスポンスステータス: ${response2.status}`);
     }
-    const result2 = await response2.json();
+    const actual2 = await response2.json();
 
-    expect(result1.id).toBe(result2.id);
+    expect(actual1.id).toBe(actual2.id);
   });
 
-  test("アンケート期限切れは 400", async () => {
+  test("アンケート回答期限切れは400", async () => {
     const { token } = await issueToken();
-    setSystemTime(addDays(new Date(), SURVEY_EXPIRE_DAYS + 1));
+    setSystemTime(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS + 1));
 
     const response = await client.api.answer.$post({ query: { token } });
     if (response.status !== 400) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.message).toBe("アンケートの回答期限が過ぎています");
+    const actual = await response.json();
+    expect(actual.message).toBe("アンケートの回答期限が過ぎています");
   });
 
-  test("使用済みクーポンがある状態で再回答は 400", async () => {
+  test("クーポンが使用済みの場合は400", async () => {
     const { token } = await issueToken();
     await client.api.answer.$post({ query: { token } });
     await client.api.admin.use.$put({ query: { token } }, { headers: adminHeaders });
@@ -180,13 +176,13 @@ describe("POST /api/answer", () => {
     if (response.status !== 400) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.message).toBe("このクーポンは既に使用されています");
+    const actual = await response.json();
+    expect(actual.message).toBe("このクーポンは既に使用されています");
   });
 });
 
 describe("PUT /api/admin/use", () => {
-  test("Basic認証なしは 401", async () => {
+  test("Basic認証なしは401", async () => {
     const { token } = await issueToken();
     const response = await client.api.admin.use.$put({ query: { token } });
     expect(response.status).toBe(401);
@@ -203,11 +199,11 @@ describe("PUT /api/admin/use", () => {
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.usedAt).not.toBeNull();
+    const actual = await response.json();
+    expect(actual.usedAt).not.toBeNull();
   });
 
-  test("クーポン未発行（アンケート未回答）は 404", async () => {
+  test("クーポン未発行(アンケート未回答)は404", async () => {
     const { token } = await issueToken();
 
     const response = await client.api.admin.use.$put(
@@ -217,11 +213,11 @@ describe("PUT /api/admin/use", () => {
     if (response.status !== 404) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.message).toBe("このクーポンは無効です");
+    const actual = await response.json();
+    expect(actual.message).toBe("このクーポンは無効です");
   });
 
-  test("使用済みクーポンの再使用は 400", async () => {
+  test("使用済みクーポンの再使用は400", async () => {
     const { token } = await issueToken();
     await client.api.answer.$post({ query: { token } });
     await client.api.admin.use.$put({ query: { token } }, { headers: adminHeaders });
@@ -233,11 +229,11 @@ describe("PUT /api/admin/use", () => {
     if (response.status !== 400) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.message).toBe("このクーポンは既に使用されています");
+    const actual = await response.json();
+    expect(actual.message).toBe("このクーポンは既に使用されています");
   });
 
-  test("期限切れクーポンの使用は 400", async () => {
+  test("期限切れクーポンの使用は400", async () => {
     const { token } = await issueToken();
     await client.api.answer.$post({ query: { token } });
 
@@ -250,7 +246,7 @@ describe("PUT /api/admin/use", () => {
     if (response.status !== 400) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    const result = await response.json();
-    expect(result.message).toBe("クーポンの有効期限が切れています");
+    const actual = await response.json();
+    expect(actual.message).toBe("クーポンの有効期限が切れています");
   });
 });
