@@ -1,0 +1,70 @@
+import { TZDate } from "@date-fns/tz";
+import { addDays, endOfDay, getUnixTime } from "date-fns";
+import { and, eq, gte, isNull } from "drizzle-orm";
+import { Hono } from "hono";
+import { basicAuth } from "hono/basic-auth";
+import { ApplyGlobalResponse } from "hono/client";
+import { hc } from "hono/client";
+import { sign } from "hono/jwt";
+import { nanoid } from "nanoid";
+import { match } from "ts-pattern";
+import { coupons } from "./db/schema";
+import { env } from "../env";
+import {
+  type Variables,
+  type Payload,
+  SURVEY_EXPIRE_DAYS,
+  TIMEZONE,
+  MESSAGES,
+  payloadMiddleware,
+  getCouponStatus,
+} from "./utils";
+
+export const app = new Hono<{ Variables: Variables }>()
+  .basePath("admin")
+  .use(basicAuth({ username: env.BA_USERNAME, password: env.BA_PASSWORD }));
+export const typedApp = app
+  .post("/issue", async (c) => {
+    const surveyExp = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
+    return c.json({
+      token: await sign({ sub: nanoid(), surveyExp } satisfies Payload, env.SECRET),
+      surveyExp,
+    });
+  })
+  .put("/use", payloadMiddleware, async (c) => {
+    const payload = c.get("payload");
+
+    const now = new Date();
+    const [updated] = await c
+      .get("db")
+      .update(coupons)
+      .set({ usedAt: now })
+      .where(and(eq(coupons.id, payload.sub), gte(coupons.exp, now), isNull(coupons.usedAt)))
+      .returning();
+
+    if (updated) {
+      return c.json(updated, 200);
+    }
+
+    // 使用処理に失敗した場合
+    const [existing] = await c.get("db").select().from(coupons).where(eq(coupons.id, payload.sub));
+
+    if (!existing) {
+      return c.json({ message: MESSAGES.COUPON_NOT_FOUND }, 404);
+    }
+    return match(getCouponStatus(existing))
+      .with({ status: "coupon expired" }, () => c.json({ message: MESSAGES.COUPON_EXPIRED }, 400))
+      .with({ status: "used" }, () => c.json({ message: MESSAGES.COUPON_USED }, 400))
+      .with({ status: "active" }, () => c.json({ message: MESSAGES.UNEXPECTED_ERROR }, 500))
+      .exhaustive();
+  });
+
+export type AdminAppType = ApplyGlobalResponse<
+  typeof typedApp,
+  {
+    400: { json: { message: string } };
+    401: { json: { message: string } } | Response;
+  }
+>;
+
+export const hcWithType = (...args: Parameters<typeof hc>) => hc<AdminAppType>(...args);
