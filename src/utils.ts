@@ -1,10 +1,11 @@
 import { fromUnixTime, isPast } from "date-fns";
-import { drizzle } from "drizzle-orm/libsql";
+import type { drizzle } from "drizzle-orm/libsql";
 import { createMiddleware } from "hono/factory";
 import { verify } from "hono/jwt";
-import { env } from "../env";
 import * as v from "valibot";
-import { coupons } from "./db/schema";
+
+import { env } from "../env";
+import type { coupons } from "./db/schema";
 
 export const TIMEZONE = "Asia/Tokyo";
 export const SURVEY_EXPIRE_DAYS = 7;
