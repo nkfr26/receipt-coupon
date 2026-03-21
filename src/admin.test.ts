@@ -9,7 +9,7 @@ import { env } from "../env";
 import type { AdminAppType } from "./admin";
 import { createApp } from "./index";
 import type { PublicAppType } from "./public";
-import { COUPON_EXPIRE_MONTHS, SURVEY_EXPIRE_DAYS, TIMEZONE } from "./utils";
+import { COUPON_EXPIRE_MONTHS, MESSAGES, SURVEY_EXPIRE_DAYS, TIMEZONE } from "./utils";
 
 let adminClient: ReturnType<typeof testClient<AdminAppType>>;
 let publicClient: ReturnType<typeof testClient<PublicAppType>>;
@@ -94,7 +94,7 @@ describe("PUT /admin/use", () => {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-    expect(actual.message).toBe("このクーポンは無効です");
+    expect(actual.message).toBe(MESSAGES.COUPON_NOT_FOUND);
   });
 
   test("期限切れクーポンの使用は400", async () => {
@@ -111,7 +111,7 @@ describe("PUT /admin/use", () => {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-    expect(actual.message).toBe("クーポンの有効期限が切れています");
+    expect(actual.message).toBe(MESSAGES.COUPON_EXPIRED);
   });
 
   test("使用済みクーポンの再使用は400", async () => {
@@ -127,6 +127,6 @@ describe("PUT /admin/use", () => {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-    expect(actual.message).toBe("このクーポンは既に使用されています");
+    expect(actual.message).toBe(MESSAGES.COUPON_USED);
   });
 });

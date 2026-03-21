@@ -47,7 +47,7 @@ describe("GET /public/status", () => {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-    expect(actual.message).toBe("このURLは無効です");
+    expect(actual.message).toBe(MESSAGES.TOKEN_INVALID);
   });
 
   test("不正なトークンは401", async () => {
@@ -128,9 +128,6 @@ describe("POST /public/answer", () => {
   test("回答すると201でクーポンが発行される", async () => {
     const { token } = await issueToken();
     const response = await publicClient.public.answer.$post({ query: { token } });
-    if (!response.ok) {
-      throw new Error(`レスポンスステータス: ${response.status}`);
-    }
     expect(response.status).toBe(201);
   });
 
@@ -169,7 +166,7 @@ describe("POST /public/answer", () => {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-    expect(actual.message).toBe("アンケートの回答期限が過ぎています");
+    expect(actual.message).toBe(MESSAGES.SURVEY_EXPIRED);
   });
 
   test("クーポンが使用済みの場合は400", async () => {
@@ -182,6 +179,6 @@ describe("POST /public/answer", () => {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-    expect(actual.message).toBe("このクーポンは既に使用されています");
+    expect(actual.message).toBe(MESSAGES.COUPON_USED);
   });
 });
