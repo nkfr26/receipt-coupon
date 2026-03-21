@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { TZDate } from "@date-fns/tz";
-import { addDays, addMonths, endOfDay, endOfMonth, getUnixTime } from "date-fns";
+import { addDays, addMonths, endOfMonth, getUnixTime } from "date-fns";
 import { drizzle } from "drizzle-orm/libsql";
 import { testClient } from "hono/testing";
 import { createApp } from "./index";
@@ -8,7 +8,7 @@ import { env } from "../env";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { AdminAppType } from "./admin";
 import { PublicAppType } from "./public";
-import { TIMEZONE, SURVEY_EXPIRE_DAYS, COUPON_EXPIRE_MONTHS } from "./utils";
+import { TIMEZONE, SURVEY_EXPIRE_DAYS, COUPON_EXPIRE_MONTHS, MESSAGES } from "./utils";
 
 let adminClient: ReturnType<typeof testClient<AdminAppType>>;
 let publicClient: ReturnType<typeof testClient<PublicAppType>>;
@@ -30,7 +30,7 @@ const adminHeaders = {
   Authorization: `Basic ${btoa(`${env.BA_USERNAME}:${env.BA_PASSWORD}`)}`,
 };
 
-// /api/admin/issue 経由でトークンを発行する
+// /admin/issue 経由でトークンを発行する
 async function issueToken() {
   const response = await adminClient.admin.issue.$post({}, { headers: adminHeaders });
   if (!response.ok) {
@@ -39,7 +39,7 @@ async function issueToken() {
   return response.json();
 }
 
-describe("GET /api/status", () => {
+describe("GET /public/status", () => {
   test("トークンなしは400", async () => {
     const response = await publicClient.public.status.$get({ query: {} });
     if (response.status !== 400) {
@@ -50,8 +50,14 @@ describe("GET /api/status", () => {
   });
 
   test("不正なトークンは401", async () => {
-    const response = await publicClient.public.status.$get({ query: { token: "invalid.token.here" } });
-    expect(response.status).toBe(401);
+    const response = await publicClient.public.status.$get({
+      query: { token: "invalid.token.here" },
+    });
+    if (response.status !== 401) {
+      throw new Error(`レスポンスステータス: ${response.status}`);
+    }
+    const actual = await response.json();
+    expect(actual.message).toBe(MESSAGES.TOKEN_INVALID);
   });
 
   test("アンケート回答期限切れ", async () => {
@@ -117,7 +123,7 @@ describe("GET /api/status", () => {
   });
 });
 
-describe("POST /api/answer", () => {
+describe("POST /public/answer", () => {
   test("回答すると201でクーポンが発行される", async () => {
     const { token } = await issueToken();
     const response = await publicClient.public.answer.$post({ query: { token } });
@@ -143,17 +149,14 @@ describe("POST /api/answer", () => {
 
   test("二重回答は200で既存クーポンを返す", async () => {
     const { token } = await issueToken();
-    const response1 = await publicClient.public.answer.$post({ query: { token } });
-    if (!response1.ok) {
-      throw new Error(`レスポンスステータス: ${response1.status}`);
-    }
-    expect(response1.status).toBe(201);
+    await publicClient.public.answer.$post({ query: { token } });
 
-    const response2 = await publicClient.public.answer.$post({ query: { token } });
-    if (!response2.ok) {
-      throw new Error(`レスポンスステータス: ${response2.status}`);
+    const response = await publicClient.public.answer.$post({ query: { token } });
+    if (response.status !== 200) {
+      throw new Error(`レスポンスステータス: ${response.status}`);
     }
-    expect(response2.status).toBe(200);
+    const actual = await response.json();
+    expect(actual.usedAt).toBeNull();
   });
 
   test("アンケート回答期限切れは400", async () => {

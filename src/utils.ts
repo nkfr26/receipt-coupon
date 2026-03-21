@@ -38,6 +38,19 @@ export async function getPayload(token: string) {
   }
 }
 
+export const payloadMiddleware = createMiddleware<{ Variables: Variables }>(async (c, next) => {
+  const token = c.req.query("token");
+  if (!token) {
+    return c.json({ message: MESSAGES.TOKEN_INVALID }, 400);
+  }
+  const { payload, message } = await getPayload(token);
+  if (!payload) {
+    return c.json({ message }, 401);
+  }
+  c.set("payload", payload);
+  await next();
+});
+
 export function getSurveyStatus(surveyExp: number) {
   if (isPast(fromUnixTime(surveyExp))) {
     return { status: "survey expired" } as const;
@@ -54,16 +67,3 @@ export function getCouponStatus(coupon: typeof coupons.$inferSelect) {
   }
   return { status: "active", ...coupon } as const;
 }
-
-export const payloadMiddleware = createMiddleware<{ Variables: Variables }>(async (c, next) => {
-  const token = c.req.query("token");
-  if (!token) {
-    return c.json({ message: MESSAGES.TOKEN_INVALID }, 400);
-  }
-  const { payload, message } = await getPayload(token);
-  if (!payload) {
-    return c.json({ message }, 401);
-  }
-  c.set("payload", payload);
-  await next();
-});

@@ -26,10 +26,13 @@ export const app = new Hono<{ Variables: Variables }>()
 export const typedApp = app
   .post("/issue", async (c) => {
     const surveyExp = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
-    return c.json({
-      token: await sign({ sub: nanoid(), surveyExp } satisfies Payload, env.SECRET),
-      surveyExp,
-    });
+    return c.json(
+      {
+        token: await sign({ sub: nanoid(), surveyExp } satisfies Payload, env.SECRET),
+        surveyExp,
+      },
+      201,
+    );
   })
   .put("/use", payloadMiddleware, async (c) => {
     const payload = c.get("payload");

@@ -30,7 +30,7 @@ const adminHeaders = {
   Authorization: `Basic ${btoa(`${env.BA_USERNAME}:${env.BA_PASSWORD}`)}`,
 };
 
-// /api/admin/issue 経由でトークンを発行する
+// /admin/issue 経由でトークンを発行する
 async function issueToken() {
   const response = await adminClient.admin.issue.$post({}, { headers: adminHeaders });
   if (!response.ok) {
@@ -39,10 +39,15 @@ async function issueToken() {
   return response.json();
 }
 
-describe("POST /api/admin/issue", () => {
+describe("POST /admin/issue", () => {
   test("Basic認証なしは401", async () => {
     const response = await adminClient.admin.issue.$post({});
     expect(response.status).toBe(401);
+  });
+
+  test("201でトークンが発行される", async () => {
+    const response = await adminClient.admin.issue.$post({}, { headers: adminHeaders });
+    expect(response.status).toBe(201);
   });
 
   test("アンケート回答期限はTIMEZONEでSURVEY_EXPIRE_DAYS日後末まで", async () => {
@@ -55,7 +60,7 @@ describe("POST /api/admin/issue", () => {
   });
 });
 
-describe("PUT /api/admin/use", () => {
+describe("PUT /admin/use", () => {
   test("Basic認証なしは401", async () => {
     const { token } = await issueToken();
     const response = await adminClient.admin.use.$put({ query: { token } });
