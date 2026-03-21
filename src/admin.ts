@@ -23,7 +23,8 @@ import {
 export const app = new Hono<{ Variables: Variables }>()
   .basePath("admin")
   .use(basicAuth({ username: env.BA_USERNAME, password: env.BA_PASSWORD }));
-export const typedApp = app
+
+const typedApp = app
   .post("/issue", async (c) => {
     const surveyExp = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
     return c.json(
@@ -70,4 +71,4 @@ export type AdminAppType = ApplyGlobalResponse<
   }
 >;
 
-export const hcWithType = (...args: Parameters<typeof hc>) => hc<AdminAppType>(...args);
+// export const hcWithType = (...args: Parameters<typeof hc>) => hc<AdminAppType>(...args);

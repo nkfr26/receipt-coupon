@@ -3,8 +3,8 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "test": "NODE_ENV=test bun test --coverage",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "lint": "oxlint —-type-aware —-type-check",
+    "lint:fix": "oxlint —-type-aware —-type-check --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "db:push": "drizzle-kit push",
@@ -29,6 +29,7 @@
     "drizzle-kit": "^0.31.9",
     "oxfmt": "^0.36.0",
     "oxlint": "^1.51.0",
+    "oxlint-tsgolint": "^0.17.1",
     "tsx": "^4.21.0"
   }
 }

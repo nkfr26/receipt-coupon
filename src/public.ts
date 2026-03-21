@@ -17,7 +17,8 @@ import {
 } from "./utils";
 
 export const app = new Hono<{ Variables: Variables }>().basePath("public");
-export const typedApp = app
+
+const typedApp = app
   .get("/status", payloadMiddleware, async (c) => {
     const payload = c.get("payload");
 
@@ -68,4 +69,4 @@ export type PublicAppType = ApplyGlobalResponse<
   }
 >;
 
-export const hcWithType = (...args: Parameters<typeof hc>) => hc<PublicAppType>(...args);
+// export const hcWithType = (...args: Parameters<typeof hc>) => hc<PublicAppType>(...args);
