@@ -1,9 +1,9 @@
 import { TZDate } from "@date-fns/tz";
-import { addMonths, endOfMonth, fromUnixTime } from "date-fns";
+import { addMonths, endOfMonth, fromUnixTime, isPast } from "date-fns";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { ApplyGlobalResponse } from "hono/client";
-import { hc } from "hono/client";
+// import { hc } from "hono/client";
 import { match } from "ts-pattern";
 
 import { coupons } from "./db/schema";
@@ -32,7 +32,7 @@ const typedApp = app
   .post("/answer", payloadMiddleware, async (c) => {
     const payload = c.get("payload");
 
-    if (fromUnixTime(payload.surveyExp) < new Date()) {
+    if (isPast(fromUnixTime(payload.surveyExp))) {
       return c.json({ message: MESSAGES.SURVEY_EXPIRED }, 400);
     }
 
@@ -55,9 +55,9 @@ const typedApp = app
       return c.json({ message: MESSAGES.UNEXPECTED_ERROR }, 500);
     }
     return match(getCouponStatus(existing))
-      .with({ status: "coupon expired" }, () => c.json({ message: MESSAGES.UNEXPECTED_ERROR }, 500))
       .with({ status: "used" }, () => c.json({ message: MESSAGES.COUPON_USED }, 400))
       .with({ status: "active" }, () => c.json(existing, 200))
+      .with({ status: "coupon expired" }, () => c.json({ message: MESSAGES.UNEXPECTED_ERROR }, 500))
       .exhaustive();
   });
 
