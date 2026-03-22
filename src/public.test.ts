@@ -1,6 +1,6 @@
 import { TZDate } from "@date-fns/tz";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { addDays, addMonths, endOfMonth, getUnixTime } from "date-fns";
+import { addDays, addMilliseconds, addMonths, endOfDay, endOfMonth } from "date-fns";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { testClient } from "hono/testing";
@@ -61,10 +61,25 @@ describe("GET /public/status", () => {
     expect(actual.message).toBe(MESSAGES.TOKEN_INVALID);
   });
 
+  test("アンケート回答期限ちょうどは未回答", async () => {
+    const { token } = await issueToken();
+
+    const surveyExp = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS));
+    setSystemTime(surveyExp);
+
+    const response = await publicClient.public.status.$get({ query: { token } });
+    if (!response.ok) {
+      throw new Error(`レスポンスステータス: ${response.status}`);
+    }
+    const actual = await response.json();
+    expect(actual.status).toBe("unanswered");
+  });
+
   test("アンケート回答期限切れ", async () => {
     const { token } = await issueToken();
 
-    setSystemTime(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS + 1));
+    const surveyExp = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS));
+    setSystemTime(addMilliseconds(surveyExp, 1));
 
     const response = await publicClient.public.status.$get({ query: { token } });
     if (!response.ok) {
@@ -84,11 +99,27 @@ describe("GET /public/status", () => {
     expect(actual.status).toBe("unanswered");
   });
 
+  test("クーポン有効期限ちょうどは有効", async () => {
+    const { token } = await issueToken();
+    await publicClient.public.answer.$post({ query: { token } });
+
+    const couponExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
+    setSystemTime(couponExp);
+
+    const response = await publicClient.public.status.$get({ query: { token } });
+    if (!response.ok) {
+      throw new Error(`レスポンスステータス: ${response.status}`);
+    }
+    const actual = await response.json();
+    expect(actual.status).toBe("active");
+  });
+
   test("クーポン有効期限切れ", async () => {
     const { token } = await issueToken();
     await publicClient.public.answer.$post({ query: { token } });
 
-    setSystemTime(addMonths(endOfMonth(TZDate.tz(TIMEZONE)), COUPON_EXPIRE_MONTHS + 1));
+    const couponExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
+    setSystemTime(addMilliseconds(couponExp, 1));
 
     const response = await publicClient.public.status.$get({ query: { token } });
     if (!response.ok) {
@@ -142,7 +173,7 @@ describe("POST /public/answer", () => {
     const actual = await response.json();
 
     const expectedExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
-    expect(getUnixTime(new Date(actual.exp))).toBe(getUnixTime(expectedExp));
+    expect(new Date(actual.exp)).toStrictEqual(expectedExp);
   });
 
   test("二重回答は200で既存クーポンを返す", async () => {
@@ -157,9 +188,23 @@ describe("POST /public/answer", () => {
     expect(actual.usedAt).toBeNull();
   });
 
-  test("アンケート回答期限切れは400", async () => {
+  test("回答期限ちょうどのアンケートは回答可能", async () => {
     const { token } = await issueToken();
-    setSystemTime(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS + 1));
+    const surveyExp = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS));
+    setSystemTime(surveyExp);
+
+    const response = await publicClient.public.answer.$post({ query: { token } });
+    if (!response.ok) {
+      throw new Error(`レスポンスステータス: ${response.status}`);
+    }
+    const actual = await response.json();
+    expect(actual.usedAt).toBeNull();
+  });
+
+  test("回答期限切れのアンケートは400", async () => {
+    const { token } = await issueToken();
+    const surveyExp = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS));
+    setSystemTime(addMilliseconds(surveyExp, 1));
 
     const response = await publicClient.public.answer.$post({ query: { token } });
     if (response.status !== 400) {

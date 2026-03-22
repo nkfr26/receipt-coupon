@@ -1,4 +1,4 @@
-import { fromUnixTime, isPast } from "date-fns";
+import { isPast } from "date-fns";
 import type { drizzle } from "drizzle-orm/libsql";
 import { createMiddleware } from "hono/factory";
 import { verify } from "hono/jwt";
@@ -53,7 +53,7 @@ export const payloadMiddleware = createMiddleware<{ Variables: Variables }>(asyn
 });
 
 export function getSurveyStatus(surveyExp: number) {
-  if (isPast(fromUnixTime(surveyExp))) {
+  if (isPast(new Date(surveyExp))) {
     return { status: "survey expired" } as const;
   }
   return { status: "unanswered", surveyExp } as const;

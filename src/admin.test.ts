@@ -1,6 +1,6 @@
 import { TZDate } from "@date-fns/tz";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { addDays, addMonths, endOfDay, endOfMonth, getUnixTime } from "date-fns";
+import { addDays, addMilliseconds, addMonths, endOfDay, endOfMonth } from "date-fns";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { testClient } from "hono/testing";
@@ -56,7 +56,7 @@ describe("POST /admin/issue", () => {
 
     const actual = await issueToken();
 
-    const expected = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
+    const expected = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)).getTime();
     expect(actual.surveyExp).toBe(expected);
   });
 });
@@ -97,11 +97,30 @@ describe("PUT /admin/use", () => {
     expect(actual.message).toBe(MESSAGES.COUPON_NOT_FOUND);
   });
 
-  test("期限切れクーポンの使用は400", async () => {
+  test("有効期限ちょうどのクーポンは使用可能", async () => {
     const { token } = await issueToken();
     await publicClient.public.answer.$post({ query: { token } });
 
-    setSystemTime(addMonths(endOfMonth(TZDate.tz(TIMEZONE)), COUPON_EXPIRE_MONTHS + 1));
+    const couponExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
+    setSystemTime(couponExp);
+
+    const response = await adminClient.admin.use.$put(
+      { query: { token } },
+      { headers: adminHeaders },
+    );
+    if (!response.ok) {
+      throw new Error(`レスポンスステータス: ${response.status}`);
+    }
+    const actual = await response.json();
+    expect(actual.usedAt).not.toBeNull();
+  });
+
+  test("有効期限切れクーポンの使用は400", async () => {
+    const { token } = await issueToken();
+    await publicClient.public.answer.$post({ query: { token } });
+
+    const couponExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
+    setSystemTime(addMilliseconds(couponExp, 1));
 
     const response = await adminClient.admin.use.$put(
       { query: { token } },

@@ -1,5 +1,5 @@
 import { TZDate } from "@date-fns/tz";
-import { addMonths, endOfMonth, fromUnixTime, isPast } from "date-fns";
+import { addMonths, endOfMonth, isPast } from "date-fns";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { ApplyGlobalResponse } from "hono/client";
@@ -32,7 +32,7 @@ const typedApp = app
   .post("/answer", payloadMiddleware, async (c) => {
     const payload = c.get("payload");
 
-    if (isPast(fromUnixTime(payload.surveyExp))) {
+    if (isPast(new Date(payload.surveyExp))) {
       return c.json({ message: MESSAGES.SURVEY_EXPIRED }, 400);
     }
 

@@ -1,5 +1,5 @@
 import { TZDate } from "@date-fns/tz";
-import { addDays, endOfDay, getUnixTime } from "date-fns";
+import { addDays, endOfDay } from "date-fns";
 import { and, eq, gte, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
@@ -26,7 +26,7 @@ export const app = new Hono<{ Variables: Variables }>()
 
 const typedApp = app
   .post("/issue", async (c) => {
-    const surveyExp = getUnixTime(endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)));
+    const surveyExp = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)).getTime();
     return c.json(
       {
         token: await sign({ sub: nanoid(), surveyExp } satisfies Payload, env.SECRET),
