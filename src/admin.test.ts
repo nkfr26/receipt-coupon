@@ -52,10 +52,7 @@ describe("POST /admin/issue", () => {
   });
 
   test("アンケート回答期限はTIMEZONEでSURVEY_EXPIRE_DAYS日後末まで", async () => {
-    setSystemTime(new Date("2026-01-01T00:00:00+09:00"));
-
     const actual = await issueToken();
-
     const expected = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS)).getTime();
     expect(actual.surveyExp).toBe(expected);
   });
@@ -115,7 +112,7 @@ describe("PUT /admin/use", () => {
     expect(actual.usedAt).not.toBeNull();
   });
 
-  test("有効期限切れクーポンの使用は400", async () => {
+  test("有効期限切れのクーポンは使用不可", async () => {
     const { token } = await issueToken();
     await publicClient.public.answer.$post({ query: { token } });
 
@@ -133,7 +130,7 @@ describe("PUT /admin/use", () => {
     expect(actual.message).toBe(MESSAGES.COUPON_EXPIRED);
   });
 
-  test("使用済みクーポンの再使用は400", async () => {
+  test("使用済みのクーポンは再使用不可", async () => {
     const { token } = await issueToken();
     await publicClient.public.answer.$post({ query: { token } });
     await adminClient.admin.use.$put({ query: { token } }, { headers: adminHeaders });

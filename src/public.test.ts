@@ -163,15 +163,12 @@ describe("POST /public/answer", () => {
   });
 
   test("クーポン有効期限はTIMEZONEでCOUPON_EXPIRE_MONTHSか月後末まで", async () => {
-    setSystemTime(new Date("2026-01-01T00:00:00+09:00"));
-
     const { token } = await issueToken();
     const response = await publicClient.public.answer.$post({ query: { token } });
     if (!response.ok) {
       throw new Error(`レスポンスステータス: ${response.status}`);
     }
     const actual = await response.json();
-
     const expectedExp = endOfMonth(addMonths(TZDate.tz(TIMEZONE), COUPON_EXPIRE_MONTHS));
     expect(new Date(actual.exp)).toStrictEqual(expectedExp);
   });
@@ -201,7 +198,7 @@ describe("POST /public/answer", () => {
     expect(actual.usedAt).toBeNull();
   });
 
-  test("回答期限切れのアンケートは400", async () => {
+  test("回答期限切れのアンケートは回答不可", async () => {
     const { token } = await issueToken();
     const surveyExp = endOfDay(addDays(TZDate.tz(TIMEZONE), SURVEY_EXPIRE_DAYS));
     setSystemTime(addMilliseconds(surveyExp, 1));
@@ -214,7 +211,7 @@ describe("POST /public/answer", () => {
     expect(actual.message).toBe(MESSAGES.SURVEY_EXPIRED);
   });
 
-  test("クーポンが使用済みの場合は400", async () => {
+  test("クーポン使用済みの場合は回答不可", async () => {
     const { token } = await issueToken();
     await publicClient.public.answer.$post({ query: { token } });
     await adminClient.admin.use.$put({ query: { token } }, { headers: adminHeaders });
