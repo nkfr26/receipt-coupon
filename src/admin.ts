@@ -22,7 +22,13 @@ import {
 
 export const app = new Hono<{ Variables: Variables }>()
   .basePath("admin")
-  .use(basicAuth({ username: env.BA_USERNAME, password: env.BA_PASSWORD }));
+  .use(
+    basicAuth({
+      username: env.BA_USERNAME,
+      password: env.BA_PASSWORD,
+      invalidUserMessage: { message: MESSAGES.UNAUTHORIZED },
+    }),
+  );
 
 const typedApp = app
   .post("/issue", async (c) => {
@@ -67,7 +73,7 @@ export type AdminAppType = ApplyGlobalResponse<
   typeof typedApp,
   {
     400: { json: { message: string } };
-    401: { json: { message: string } } | Response;
+    401: { json: { message: string } };
   }
 >;
 

@@ -52,7 +52,10 @@ describe("GET /public/status", () => {
 
   test("不正なトークンは401", async () => {
     const response = await publicClient.public.status.$get({
-      query: { token: "invalid.token.here" },
+      query: {
+        token:
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDdl96OHRRSms5Vi15WEgtam1aRGoiLCJzdXJ2ZXlFeHAiOjk5OTk5OTk5OTl9.1dIMHZk4TXDHrbzK38rGOAoHtWDmom8ps6poMEFE3n4",
+      },
     });
     if (response.status !== 401) {
       throw new Error(`レスポンスステータス: ${response.status}`);

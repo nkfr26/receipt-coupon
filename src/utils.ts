@@ -18,6 +18,7 @@ export const MESSAGES = {
   COUPON_USED: "このクーポンは既に使用されています",
   COUPON_EXPIRED: "クーポンの有効期限が切れています",
   UNEXPECTED_ERROR: "予期せぬエラーが発生しました",
+  UNAUTHORIZED: "認証に失敗しました",
 } as const;
 
 const PayloadSchema = v.object({
